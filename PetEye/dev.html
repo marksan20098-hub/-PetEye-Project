@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Panel</title>
+<style>body{margin:0;background:#0f172a;color:#f8fafc;font:14px system-ui}header{background:linear-gradient(135deg,#1e1b4b,#4338ca);padding:12px 18px;font-weight:700;border-bottom:2px solid #6366f1}main{padding:14px;max-width:980px;margin:auto}
+table{width:100%;border-collapse:collapse;background:#1e293b}th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #334155;font-size:.82rem}th{color:#94a3b8}.w{overflow-x:auto;border-radius:10px}
+button{border:0;border-radius:6px;padding:6px 10px;color:#fff;background:#4f46e5;cursor:pointer;margin:2px}button.r{background:#b91c1c}button.s{background:#334155}
+.ok{color:#34d399}.mal{color:#f87171}.am{color:#fbbf24}#msg{color:#fbbf24;padding:8px 0}h2{font-size:.78rem;color:#94a3b8;margin:18px 0 6px}</style></head><body>
+<header>🛠️ Panel de desarrollador</header><main><div id="msg"></div>
+<h2>MASCOTAS Y DISPOSITIVOS</h2><div class="w"><table id="t"></table></div>
+<h2>DISPOSITIVOS SIN MASCOTA</h2><div class="w"><table id="u"></table></div><br><button class="s" id="out">Olvidar la llave en este navegador</button></main>
+<script>
+let K=localStorage.getItem("devkey")||"",timer;const $=i=>document.getElementById(i);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";");
+async function call(p,m,b){if(!K)K=prompt("Llave de desarrollador:")||"";
+ const r=await fetch(p,{method:m||"GET",headers:{"Content-Type":"application/json","x-dev-key":K},body:b&&JSON.stringify(b)});
+ if(r.status===404){localStorage.removeItem("devkey");K="";throw new Error("Llave incorrecta o no configurada");}
+ localStorage.setItem("devkey",K);return r.json();}
+function est(l){if(!l)return'<span class="mal">nunca se conectó</span>';
+ return'<span class="'+(l.hace<30?"ok":"mal")+'">'+(l.hace>=9999?"sin datos":"hace "+l.hace+" s")+'</span> | '+l.sats+' sat | '+(l.rssi==null?"-":l.rssi)+' dBm'+(l.demo?' <b class="am">DEMO</b>':"");}
+async function cargar(){try{const d=await call("/api/dev/estado");$("msg").textContent="";
+ $("t").innerHTML="<tr><th>Mascota</th><th>Dueño</th><th>Dispositivo</th><th>Estado del ESP32</th><th>Acciones</th></tr>"+d.pets.map(p=>"<tr><td>"+esc(p.nombre)+(p.estado==="desaparecida"?" 🚨":"")+"</td><td>"+esc(p.dueno)+"</td><td>"+esc(p.device_id)+"</td><td>"+est(p.live)+"</td><td><button data-a='demo' data-d='"+esc(p.device_id)+"'>"+(p.live&&p.live.demo?"Parar demo":"Demo")+"</button><button class='s' data-a='hist' data-i='"+p.id+"'>Borrar historial</button><button class='r' data-a='del' data-i='"+p.id+"'>Borrar mascota</button></td></tr>").join("");
+ $("u").innerHTML=d.sinMascota.length?d.sinMascota.map(x=>"<tr><td>"+esc(x.device_id)+"</td><td>"+est(x.live)+"</td></tr>").join(""):"<tr><td>Ninguno</td></tr>";
+ document.querySelectorAll("#t button").forEach(b=>b.onclick=async()=>{const a=b.dataset.a;
+  if(a==="demo")await call("/api/dev/demo","POST",{device_id:b.dataset.d,on:b.textContent==="Demo"});
+  else if(confirm(a==="hist"?"¿Borrar el historial de esta mascota?":"¿Borrar la mascota y todos sus datos?"))await call("/api/dev/pets/"+b.dataset.i+(a==="hist"?"/positions":""),"DELETE");
+  cargar();});
+}catch(e){clearInterval(timer);$("msg").textContent=e.message+" — recargá la página para reintentar";}}
+$("out").onclick=()=>{localStorage.removeItem("devkey");location.reload()};
+cargar();timer=setInterval(cargar,5000);
+</script></body></html>
