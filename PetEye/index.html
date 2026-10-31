@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐾 Rastreador GPS de Mascotas | En Vivo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif}
+html,body{height:100%}body{background:#0f172a;color:#f8fafc;display:flex;flex-direction:column}
+header{background:linear-gradient(135deg,#1e1b4b,#312e81 50%,#4338ca);padding:12px 18px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;border-bottom:2px solid #6366f1}
+header h1{font-size:1.15rem}header p{font-size:.75rem;color:#c7d2fe}
+.badge{padding:7px 16px;border-radius:9999px;font-size:.85rem;font-weight:700;background:rgba(15,23,42,.8);border:1px solid}
+.online{color:#34d399;border-color:#10b98166}.offline{color:#f87171;border-color:#ef444466}.espera{color:#fbbf24;border-color:#fbbf2466}
+#alerta{display:none;background:#b91c1c;text-align:center;padding:8px;font-weight:700}
+.layout{flex:1;display:flex;flex-direction:column;min-height:0}
+@media(min-width:850px){.layout{flex-direction:row}aside{max-width:340px;overflow-y:auto}}
+aside{background:#1e293b;width:100%;padding:14px;display:flex;flex-direction:column;gap:10px;border-right:1px solid #334155}
+.card{background:#0f172a;border:1px solid #334155;border-radius:12px;padding:12px;font-size:.85rem;line-height:1.7}
+.card h2{font-size:.75rem;color:#94a3b8}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.item{background:#1e293b;padding:8px;border-radius:8px}.item span{display:block;font-size:.7rem;color:#94a3b8}
+.item strong{color:#38bdf8;font-family:ui-monospace,monospace}
+#map{flex:1;min-height:420px}
+button,a.b,select,input{border:0;padding:10px;border-radius:8px;font-size:.88rem;color:#fff;background:#4f46e5;font-weight:600;cursor:pointer;text-align:center;text-decoration:none}
+button.s{background:#334155}button.r{background:#b91c1c}a.b{background:#059669}input,select{background:#0f172a;border:1px solid #334155;font-weight:400;cursor:text}
+.fila{display:flex;gap:6px}.fila>*{flex:1}button:focus-visible,a:focus-visible{outline:2px solid #a5b4fc}
+#login{position:fixed;inset:0;background:#0f172a;display:none;align-items:center;justify-content:center;z-index:2000}
+#login .card{width:min(92vw,340px);display:flex;flex-direction:column;gap:10px}
+.lugar{display:flex;justify-content:space-between;align-items:center}.lugar button{padding:2px 8px}
+#modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:3000}
+#modal .card{width:min(94vw,430px);max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:10px}#mb{display:flex;flex-direction:column;gap:8px}
+label{font-size:.8rem;color:#94a3b8}.link{background:#1e293b;border-radius:8px;padding:8px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.lugar span:last-child{white-space:nowrap}
+.lista{max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:6px}.link select{padding:6px}
+</style></head><body>
+<header><div><h1>🐾 Rastreador GPS de Mascotas</h1><p>ESP32 DevKit V1 + GY-GPS6MV2 | Proyecto de Robótica (Paraguay)</p></div><div class="badge offline" id="badge">Conectando...</div></header>
+<div id="alerta">🚨 MASCOTA DESAPARECIDA — última ubicación en el mapa</div>
+<div class="layout"><aside>
+ <div class="card"><h2 id="nombre">📍 Coordenadas actuales</h2><div class="grid">
+  <div class="item"><span>Latitud</span><strong id="lat">--.------</strong></div><div class="item"><span>Longitud</span><strong id="lng">--.------</strong></div>
+  <div class="item"><span>Velocidad</span><strong id="vel">--</strong></div><div class="item"><span>Satélites</span><strong id="sat">--</strong></div></div></div>
+ <div class="card">📡 ESP32: <b id="est">Sin datos</b><br>⏱️ Último dato: <b id="hora">Sin datos</b><br>🐾 Puntos en ruta: <b id="pts">0</b><br><a id="gm" target="_blank" rel="noopener" style="color:#818cf8"></a></div>
+ <div id="ctl" style="display:none;flex-direction:column;gap:8px">
+  <div class="fila"><select id="selPet"></select><button class="s" id="bNueva">+ Mascota</button></div>
+  <div class="card"><h2>LUGARES HABITUALES</h2><div id="lugares"></div></div>
+  <button id="bLugar">📌 Agregar lugar</button><button id="bHist" class="s">🕒 Ver historial guardado</button>
+  <button id="bDes" class="r">🚨 Marcar desaparecida</button><button id="bShare" class="s">🔗 Compartir y enlaces</button><button id="bMiembros" class="s">👥 Personas con acceso</button><button id="bWifi" class="s">📶 Redes Wi-Fi de la placa</button>
+  <button id="bSalir" class="s">Salir</button></div>
+ <button id="bSeguir">🎯 Seguir a la mascota</button><a class="b" href="/descargar/informe" download>📄 Descargar informe del proyecto</a>
+</aside><div id="map"></div></div>
+<div id="modal"><div class="card"><h2 id="mt"></h2><div id="mb"></div><div id="merr" style="color:#fbbf24"></div><div class="fila"><button id="mok">Guardar</button><button class="s" id="mx">Cerrar</button></div></div></div>
+<div id="login"><div class="card"><h2>🐾 INICIAR SESIÓN</h2><input id="em" type="email" placeholder="Correo"><input id="pw" type="password" placeholder="Contraseña (mín. 6)">
+ <button id="bIn">Entrar</button><button id="bReg" class="s">Registrarme</button><div id="msg" style="color:#fbbf24"></div></div></div>
+<script>
+const $=id=>document.getElementById(id), ver=location.pathname.startsWith("/ver/"), tok=location.pathname.split("/").pop();
+const map=L.map("map").setView([-25.283,-57.632],15);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
+const icono=L.divIcon({html:'<div style="background:#4f46e5;border:3px solid #fff;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 12px #0009">🐶</div>',iconSize:[40,40],iconAnchor:[20,20],className:""});
+const ruta=L.polyline([],{color:"#818cf8",weight:4,dashArray:"5,5"}).addTo(map), hist=L.polyline([],{color:"#f59e0b",weight:3}).addTo(map), zonas=L.layerGroup().addTo(map);
+let sb,sess,pet=null,marker=null,seguir=true,primera=true,live=null,t0=0,lugares=[];
+map.on("dragstart",()=>seguir=false);
+const api=async(p,o={})=>{const h={"Content-Type":"application/json"};
+ if(sb&&!ver){const {data}=await sb.auth.getSession();sess=data.session;   // renueva el token si venció
+  if(!sess){$("login").style.display="flex";throw new Error("Tu sesión terminó. Iniciá sesión de nuevo.");}}
+ if(sess)h.Authorization="Bearer "+sess.access_token;
+ const r=await fetch(p,{method:o.method||"GET",headers:h,body:o.body&&JSON.stringify(o.body),cache:"no-store"});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
+function badge(c,t,e){$("badge").className="badge "+c;$("badge").textContent=t;$("est").textContent=e}
+
+async function poll(){
+ try{live=await api(ver?"/api/ver/"+tok:"/api/pets/"+pet+"/live");t0=Date.now();}
+ catch(e){if(ver)return badge("offline",e.message,"Enlace no válido");return badge("espera","Servidor despertando... (puede tardar 1 min)","Esperando servidor");}
+ $("nombre").textContent="📍 "+live.pet.nombre;$("alerta").style.display=live.pet.estado==="desaparecida"?"block":"none";
+ if(!ver)$("bDes").textContent=live.pet.estado==="desaparecida"?"✅ Ya apareció":"🚨 Marcar desaparecida";
+ ruta.setLatLngs(live.trail);$("pts").textContent=live.trail.length;
+ const p=live.pos;if(p){const ll=[p.lat,p.lng];$("lat").textContent=p.lat.toFixed(6);$("lng").textContent=p.lng.toFixed(6);
+  $("vel").textContent=p.speed.toFixed(1)+" km/h";$("sat").textContent=p.sats;
+  $("gm").href="https://www.google.com/maps?q="+p.lat+","+p.lng;$("gm").textContent="🗺️ Abrir en Google Maps";
+  marker?marker.setLatLng(ll):marker=L.marker(ll,{icon:icono}).addTo(map);
+  if(primera){map.setView(ll,17);primera=false}else if(seguir)map.panTo(ll);}
+ pintar();
+}
+function pintar(){if(!live)return;const s=Math.round(((live.hace||0)+Date.now()-t0)/1000);
+ $("hora").textContent=live.pos?"hace "+(s<60?s+" s":Math.round(s/60)+" min"):"Sin datos";
+ if(!live.conectado)badge("offline","ESP32 desconectado","Desconectado");
+ else if(!live.pos||s>15)badge("espera","ESP32 conectado, buscando satélites ("+live.sats+")","Sin fix GPS");
+ else badge("online","Conectado con rastreador","En línea con GPS");}
+
+async function cargarLugares(){
+ lugares=await api("/api/pets/"+pet+"/places");zonas.clearLayers();
+ const hayCasa=lugares.some(l=>l.tipo==="casa");
+ $("lugares").innerHTML=(hayCasa||rol==="observador"?"":"<div style='color:#fbbf24'>⚠️ Guardá la casa para activar la alarma de zona</div>")+
+  (lugares.map(l=>"<div class='lugar'><span>"+(l.tipo==="casa"?"🏠":"📌")+" "+esc(l.nombre)+" ("+l.radio_m+" m)</span>"+(rol==="observador"?"":"<span><button class='s' data-e='"+l.id+"'>✏️</button> <button class='s' data-d='"+l.id+"'>✕</button></span>")+"</div>").join("")||"Sin lugares guardados");
+ lugares.forEach(l=>L.circle([l.lat,l.lng],{radius:l.radio_m,color:l.tipo==="casa"?"#38bdf8":"#10b981",fillOpacity:.12}).bindTooltip(l.nombre).addTo(zonas));
+ document.querySelectorAll("#lugares [data-d]").forEach(b=>b.onclick=async()=>{if(confirm("¿Borrar este lugar?")){await api("/api/pets/"+pet+"/places/"+b.dataset.d,{method:"DELETE"});cargarLugares()}});
+ document.querySelectorAll("#lugares [data-e]").forEach(b=>b.onclick=()=>formLugar(lugares.find(l=>l.id===b.dataset.e)));}
+let pets=[],rol="dueño";
+function aplicarRol(){const d=rol==="dueño",e=rol!=="observador";
+ $("bLugar").style.display=e?"":"none";$("bDes").style.display=e?"":"none";$("bShare").style.display=d?"":"none";$("bMiembros").style.display=d?"":"none";$("bWifi").style.display=d?"":"none";}
+async function cargarMascotas(){
+ pets=await api("/api/pets");if(!pets.length){formMascota();return;}
+ $("selPet").innerHTML=pets.map(p=>"<option value='"+p.id+"'>"+esc(p.nombre)+(p.rol!=="dueño"?" · "+p.rol:"")+"</option>").join("");
+ pet=pet&&pets.some(p=>p.id===pet)?pet:pets[0].id;$("selPet").value=pet;rol=pets.find(p=>p.id===pet).rol;aplicarRol();
+ primera=true;hist.setLatLngs([]);await cargarLugares();poll();}
+function mostrarApp(){$("login").style.display="none";$("ctl").style.display="flex";cargarMascotas();}
+
+if(ver){poll();}else{(async()=>{
+ const c=await api("/api/config");sb=supabase.createClient(c.url,c.anon);
+ const {data}=await sb.auth.getSession();sess=data.session;
+ sess?mostrarApp():$("login").style.display="flex";
+})().catch(()=>{$("login").style.display="flex";$("msg").textContent="No se pudo conectar con el servidor"});}
+const entrar=async reg=>{$("msg").textContent="";const f={email:$("em").value,password:$("pw").value};
+ const {data,error}=reg?await sb.auth.signUp(f):await sb.auth.signInWithPassword(f);
+ if(error)return $("msg").textContent=error.message;
+ if(!data.session)return $("msg").textContent="Revisá tu correo para confirmar la cuenta";
+ sess=data.session;mostrarApp();};
+$("bIn").onclick=()=>entrar(false);$("bReg").onclick=()=>entrar(true);
+$("bSalir").onclick=async()=>{await sb.auth.signOut();location.reload()};
+$("selPet").onchange=e=>{pet=e.target.value;rol=pets.find(p=>p.id===pet).rol;aplicarRol();primera=true;cargarLugares();poll()};
+$("bNueva").onclick=formMascota;
+$("bLugar").onclick=()=>formLugar();
+$("bHist").onclick=panelHistorial;
+$("bDes").onclick=async()=>{if(confirm("¿Cambiar el estado de desaparecida?")){await api("/api/pets/"+pet+"/desaparecida",{method:"POST"});poll()}};
+$("bShare").onclick=panelShare;
+// ---- ventana modal, lugares y enlaces ----
+const esc=s=>String(s).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";"),cerrar=()=>{$("modal").style.display="none"};$("mx").onclick=cerrar;
+function modal(t,h,ok,txt){$("mt").textContent=t;$("mb").innerHTML=h;$("merr").textContent="";$("modal").style.display="flex";
+ $("mok").style.display=ok?"":"none";$("mok").textContent=txt||"Guardar";
+ $("mok").onclick=async()=>{try{if(await ok()!==false)cerrar()}catch(e){$("merr").textContent=e.message}};}
+function formLugar(l,pos){
+ const nuevo=!l,hayCasa=lugares.some(x=>x.tipo==="casa"),hayPos=!!(live&&live.pos);
+ const donde=pos?"el punto que marcaste en el mapa":hayPos?"la posición actual de la mascota":"el centro del mapa (todavía no hay posición)";
+ modal(nuevo?"Nuevo lugar":"Editar lugar",
+  "<label>Nombre</label><input id='fn' maxlength='40' value='"+(nuevo?"":esc(l.nombre))+"'>"+
+  "<label>Radio en metros (5 a 5000). En la casa es la distancia de la alarma</label><input id='fr' type='number' min='5' max='5000' value='"+(nuevo?20:l.radio_m)+"'>"+
+  "<label>Tipo</label><select id='ft'><option value='habitual'>📌 Lugar habitual (parque, veterinaria)</option><option value='casa'>🏠 Casa (activa la alarma de zona)</option></select>"+
+  (nuevo?"<small>Se guarda en "+donde+".</small>":"<label><input id='fp' type='checkbox'> Mover aquí ("+donde+")</label>"),
+  async()=>{const nombre=$("fn").value.trim(),r=+$("fr").value;
+   if(!nombre)throw new Error("Poné un nombre");if(!(r>=5&&r<=5000))throw new Error("El radio va de 5 a 5000 metros");
+   const body={nombre,radio_m:r,tipo:$("ft").value};
+   if(nuevo||$("fp").checked){const c=pos||(hayPos?[live.pos.lat,live.pos.lng]:[map.getCenter().lat,map.getCenter().lng]);body.lat=c[0];body.lng=c[1];}
+   await api("/api/pets/"+pet+"/places"+(nuevo?"":"/"+l.id),{method:nuevo?"POST":"PUT",body});cargarLugares();});
+ $("ft").value=nuevo?(hayCasa?"habitual":"casa"):l.tipo;}
+async function panelShare(){
+ const ls=await api("/api/pets/"+pet+"/share");
+ modal("Compartir (solo lectura)",
+  "<div style='display:flex;flex-direction:column;gap:6px'>"+(ls.length?ls.map(x=>"<div class='link'><span><b>"+esc(x.etiqueta||"Sin nombre")+"</b><br><small>vence "+new Date(x.expires_at).toLocaleString()+"</small></span><span><button data-c='"+x.token+"'>Copiar</button> <button class='r' data-x='"+x.id+"'>Cancelar</button></span></div>").join(""):"<small>No hay enlaces activos</small>")+"</div>"+
+  "<label>Nuevo enlace para…</label><input id='se' maxlength='40' placeholder='Ej: Tía Marta'><label>Duración</label><select id='sh'><option value='1'>1 hora</option><option value='24' selected>24 horas</option><option value='168'>7 días</option></select>",
+  async()=>{await api("/api/pets/"+pet+"/share",{method:"POST",body:{horas:+$("sh").value,etiqueta:$("se").value.trim()}});panelShare();return false;},"Crear enlace");
+ document.querySelectorAll("#mb [data-c]").forEach(b=>b.onclick=async()=>{const u=location.origin+"/ver/"+b.dataset.c;try{await navigator.clipboard.writeText(u);b.textContent="¡Copiado!"}catch(e){prompt("Copiá el enlace:",u)}});
+ document.querySelectorAll("#mb [data-x]").forEach(b=>b.onclick=async()=>{if(confirm("¿Cancelar este enlace? Quien lo tenga dejará de ver la ubicación.")){await api("/api/pets/"+pet+"/share/"+b.dataset.x,{method:"DELETE"});panelShare()}});}
+function formMascota(){
+ modal("Nueva mascota","<label>Nombre</label><input id='pn' maxlength='40'><label>ID del dispositivo (opcional)</label><input id='pd' placeholder='esp32-01'><small>Cada ID solo puede usarse en una mascota. Si lo dejás vacío, queda sin placa asignada.</small>",
+  async()=>{const nombre=$("pn").value.trim();if(!nombre)throw new Error("Poné un nombre");
+   pet=(await api("/api/pets",{method:"POST",body:{nombre,device_id:$("pd").value.trim()}})).id;await cargarMascotas();},"Crear");}
+let punto=null;
+async function panelHistorial(){
+ const h=await api("/api/pets/"+pet+"/history");hist.setLatLngs(h.slice().reverse().map(p=>[p.lat,p.lng]));
+ modal("Historial guardado ("+h.length+" puntos)",h.length?"<div class='lista'>"+h.map((p,i)=>"<div class='link'><span><b>"+new Date(p.created_at).toLocaleString()+"</b><br><small>"+(p.direccion?esc(p.direccion)+"<br>":"")+p.lat.toFixed(5)+", "+p.lng.toFixed(5)+"</small></span><button data-i='"+i+"'>Ver</button></div>").join("")+"</div><small>La línea naranja del mapa une estos puntos.</small>":"<small>Todavía no hay puntos guardados. Se guarda uno cada 30 minutos mientras la placa envía datos.</small>",null);
+ document.querySelectorAll("#mb [data-i]").forEach(b=>b.onclick=()=>{const p=h[+b.dataset.i];if(punto)map.removeLayer(punto);punto=L.circleMarker([p.lat,p.lng],{radius:9,color:"#f59e0b",weight:3}).addTo(map);map.setView([p.lat,p.lng],18);cerrar();});}
+async function panelMiembros(){
+ const ms=await api("/api/pets/"+pet+"/members"),ok=f=>async()=>{try{await f();panelMiembros()}catch(e){$("merr").textContent=e.message}};
+ modal("Personas con acceso","<div style='display:flex;flex-direction:column;gap:6px'>"+(ms.length?ms.map(m=>"<div class='link'><span>"+esc(m.email)+"</span><span><select data-r='"+m.user_id+"'><option value='viewer'"+(m.role==="viewer"?" selected":"")+">Observador</option><option value='admin'"+(m.role==="admin"?" selected":"")+">Administrador</option></select> <button class='r' data-q='"+m.user_id+"'>Quitar</button></span></div>").join(""):"<small>Todavía no compartiste con nadie</small>")+"</div>"+
+  "<label>Agregar persona (el correo con el que se registró)</label><input id='me' type='email' placeholder='correo@ejemplo.com'><label>Rol</label><select id='mr'><option value='viewer'>Observador: solo mira</option><option value='admin'>Administrador: también edita lugares y marca desaparecida</option></select><small>Ninguna de las dos puede agregar a otras personas ni crear enlaces.</small>",
+  async()=>{const email=$("me").value.trim();if(!email)throw new Error("Escribí un correo");await api("/api/pets/"+pet+"/members",{method:"POST",body:{email,role:$("mr").value}});panelMiembros();return false;},"Agregar");
+ document.querySelectorAll("#mb [data-r]").forEach(x=>x.onchange=ok(()=>api("/api/pets/"+pet+"/members/"+x.dataset.r,{method:"PUT",body:{role:x.value}})));
+ document.querySelectorAll("#mb [data-q]").forEach(x=>x.onclick=ok(()=>api("/api/pets/"+pet+"/members/"+x.dataset.q,{method:"DELETE"})));}
+$("bMiembros").onclick=panelMiembros;
+map.on("contextmenu",e=>{if(ver||!pet||rol==="observador")return;   // clic derecho (o mantener apretado en el celular)
+ L.popup().setLatLng(e.latlng).setContent("<button id='pp'>📌 Guardar lugar aquí</button>").openOn(map);
+ $("pp").onclick=()=>{map.closePopup();formLugar(null,[e.latlng.lat,e.latlng.lng])};});
+async function panelWifi(){
+ const w=await api("/api/pets/"+pet+"/wifi"),ok=f=>async()=>{try{await f();panelWifi()}catch(e){$("merr").textContent=e.message}};
+ modal("Redes Wi-Fi de la placa","<small>Red actual: <b>"+esc(w.actual||"sin datos")+"</b><br>"+(w.aplicada?"✅ La lista ya está aplicada en la placa":"⏳ Pendiente: se aplica cuando la placa se conecte a una red conocida")+"</small><div style='display:flex;flex-direction:column;gap:6px'>"+
+  (w.redes.length?w.redes.map(x=>"<div class='link'><span>📶 "+esc(x.ssid)+"</span><button class='r' data-x='"+x.id+"'>Quitar</button></div>").join(""):"<small>Todavía no agregaste redes desde la página</small>")+"</div>"+
+  "<label>Nombre de la red (tal cual se ve)</label><input id='wn' maxlength='32'><label>Contraseña (vacía si la red es abierta)</label><input id='wp' type='password' maxlength='63'>"+
+  "<small>Solo redes de 2,4 GHz. La placa elige la de mejor señal. Los datos le llegan por internet, así que tiene que estar conectada a otra red conocida para recibirlos.</small>",
+  async()=>{const ssid=$("wn").value.trim();if(!ssid)throw new Error("Poné el nombre de la red");await api("/api/pets/"+pet+"/wifi",{method:"POST",body:{ssid,pass:$("wp").value}});panelWifi();return false;},"Agregar red");
+ document.querySelectorAll("#mb [data-x]").forEach(b=>b.onclick=ok(()=>api("/api/pets/"+pet+"/wifi/"+b.dataset.x,{method:"DELETE"})));}
+$("bWifi").onclick=panelWifi;
+$("bSeguir").onclick=()=>{seguir=true;if(marker)map.setView(marker.getLatLng(),17)};
+if(ver){["bSeguir"].forEach(()=>{});}
+setInterval(()=>{if(ver||pet)poll()},5000);setInterval(pintar,1000);
+</script></body></html>
